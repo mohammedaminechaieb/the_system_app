@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Theme applied to the Android Window while the Flutter UI initializes.
+         Referenced directly by AndroidManifest.xml — without this, the app
+         throws Resources$NotFoundException and crashes immediately on
+         launch, before Flutter ever draws a frame. -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@drawable/launch_background</item>
+    </style>
+
+    <!-- Theme applied once Flutter has drawn its first frame and taken over
+         the window. Also referenced directly by AndroidManifest.xml. -->
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

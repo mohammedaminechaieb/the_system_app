@@ -1,0 +1,58 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <!-- Required so url_launcher can open external links (martial arts resource pages) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Habit calendar scheduling (device_calendar) — reads/writes only the
+         person's own on-device calendar, never syncs anywhere else. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+
+    <!-- Photo-based meal logging (image_picker camera option) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Screen-time-as-currency: reading usage stats requires this special
+         permission, which the person must grant manually in system
+         settings (see ScreenTimeService.openUsageAccessSettings) — it
+         cannot be requested via a normal runtime dialog. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+
+    <application
+        android:label="The System"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+
+    <!-- Required from Android 11 (API 30+) so url_launcher's canLaunchUrl works for https links,
+         and so the blocked-apps picker (screen-time feature) can see installed launchable apps
+         without needing the restricted QUERY_ALL_PACKAGES permission. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+</manifest>

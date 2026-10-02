@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shown while the Flutter engine is initializing, before the first frame
+     is drawn. Kept as a plain background matching the app's dark theme so
+     there's no white flash on cold start. flutter_native_splash (already a
+     dev dependency) can regenerate a branded version of this at any time. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/black" />
+</layer-list>

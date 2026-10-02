@@ -1,0 +1,26 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Local secrets — keep your real Gemini key out of git.
+# (The .env file itself stays, since flutter_dotenv needs it to exist as a
+# bundled asset — just don't commit a real key value in it. If you do use
+# git, consider `git update-index --skip-worktree .env` after your first
+# commit of the placeholder, so future edits to your real key never diff.)
+
+# IDE
+.idea/
+*.iml
+
+# Android
+android/local.properties
+android/.gradle/
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# iOS
+ios/Pods/
