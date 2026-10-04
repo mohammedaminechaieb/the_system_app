@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/core_providers.dart';
 import '../../../core/theme/app_palette.dart';
 import '../../../core/widgets/picker_field.dart';
-import '../../../core/widgets/shared_widgets.dart';
+import '../../today/data/today_providers.dart';
 import '../data/quicklog_providers.dart';
 
 /// Common subtypes offered per [QuickLogType] — kept short and specific so
@@ -20,6 +20,13 @@ const Map<QuickLogType, List<String>> _kSubtypeSuggestions = {
 };
 
 const List<double> _kDurationPresets = [10, 15, 20, 30, 45, 60, 90];
+const List<double> _kSleepPresets = [4, 5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 10];
+const List<double> _kMealKcalPresets = [150, 300, 450, 600, 800, 1000, 1300];
+
+/// Habit ticks are logged from the habit list itself — offering them here
+/// would let a "habit" be logged (and screen time earned) without ticking
+/// any actual habit.
+final _kCaptureTypes = QuickLogType.values.where((t) => t != QuickLogType.habit).toList();
 
 /// Opens the quick-capture flow as a bottom sheet. Call this from anywhere
 /// (currently the Today screen's FAB) to log any category in a few taps —
@@ -28,6 +35,7 @@ const List<double> _kDurationPresets = [10, 15, 20, 30, 45, 60, 90];
 Future<void> showQuickCaptureSheet(BuildContext context, WidgetRef ref) async {
   final p = AppPalette.of(context);
   final suggested = await ref.read(quickLogActionsProvider).suggestLikelyType();
+  final initialType = _kCaptureTypes.contains(suggested) ? suggested : QuickLogType.exercise;
   if (!context.mounted) return;
 
   await showModalBottomSheet(
@@ -35,7 +43,7 @@ Future<void> showQuickCaptureSheet(BuildContext context, WidgetRef ref) async {
     isScrollControlled: true,
     backgroundColor: p.surface,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(p.cardRadius))),
-    builder: (sheetContext) => _QuickCaptureBody(initialType: suggested),
+    builder: (sheetContext) => _QuickCaptureBody(initialType: initialType),
   );
 }
 
@@ -76,6 +84,13 @@ class _QuickCaptureBodyState extends ConsumerState<_QuickCaptureBody> {
 
   bool get _needsMood => _type == QuickLogType.mood;
 
+  bool get _canSave {
+    if (_saving) return false;
+    if (_needsMood) return _mood != null;
+    if (_type == QuickLogType.sleep) return _value != null;
+    return true;
+  }
+
   List<String> get _subtypeOptions => _kSubtypeSuggestions[_type] ?? const [];
 
   Future<void> _save() async {
@@ -84,15 +99,21 @@ class _QuickCaptureBodyState extends ConsumerState<_QuickCaptureBody> {
     await ref.read(quickLogActionsProvider).add(
           type: _type,
           subtype: _subtype,
-          value: _needsMood ? _mood?.toDouble() : _value,
+          value: _needsMood
+              ? _mood?.toDouble()
+              // Weight saves whatever the slider shows, even if untouched.
+              : (_type == QuickLogType.weight ? (_value ?? ref.read(latestWeightProvider).valueOrNull ?? 70) : _value),
           mood: _needsMood ? _mood : null,
           note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
           dateKey: todayKey,
         );
     if (!mounted) return;
     HapticFeedback.mediumImpact();
+    // Grab the messenger before popping — this sheet's context is torn
+    // down with it.
+    final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Logged: ${_type.label}${_subtype != null ? ' · $_subtype' : ''}'), duration: const Duration(seconds: 2)));
+    messenger.showSnackBar(SnackBar(content: Text('Logged: ${_type.label}${_subtype != null ? ' · $_subtype' : ''}'), duration: const Duration(seconds: 2)));
   }
 
   @override
@@ -120,7 +141,7 @@ class _QuickCaptureBodyState extends ConsumerState<_QuickCaptureBody> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final t in QuickLogType.values)
+                  for (final t in _kCaptureTypes)
                     ChoiceChip(
                       label: Text(t.label),
                       selected: _type == t,
@@ -157,6 +178,33 @@ class _QuickCaptureBodyState extends ConsumerState<_QuickCaptureBody> {
                 const SizedBox(height: 12),
               ],
 
+              if (_type == QuickLogType.sleep) ...[
+                PickerField<double>(
+                  label: 'Hours slept',
+                  value: _value,
+                  leadingIcon: Icons.bedtime_outlined,
+                  options: [for (final h in _kSleepPresets) PickerOption(value: h, label: '$h h')],
+                  onChanged: (v) => setState(() => _value = v),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              if (_type == QuickLogType.meal) ...[
+                PickerField<double>(
+                  label: 'Rough calories (optional)',
+                  value: _value,
+                  leadingIcon: Icons.local_fire_department_outlined,
+                  options: [for (final k in _kMealKcalPresets) PickerOption(value: k, label: '~${k.toInt()} kcal')],
+                  onChanged: (v) => setState(() => _value = v),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              if (_type == QuickLogType.weight) ...[
+                _WeightSlider(value: _value ?? ref.watch(latestWeightProvider).valueOrNull ?? 70, onChanged: (v) => setState(() => _value = v)),
+                const SizedBox(height: 12),
+              ],
+
               if (_needsMood) ...[
                 RatingSelector(label: 'Mood (1-5)', value: _mood, onChanged: (v) => setState(() => _mood = v)),
                 const SizedBox(height: 12),
@@ -172,7 +220,7 @@ class _QuickCaptureBodyState extends ConsumerState<_QuickCaptureBody> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _saving ? null : _save,
+                  onPressed: _canSave ? _save : null,
                   icon: const Icon(Icons.bolt_rounded, size: 18),
                   label: Text(_saving ? 'Saving…' : 'Save log'),
                 ),
@@ -181,6 +229,25 @@ class _QuickCaptureBodyState extends ConsumerState<_QuickCaptureBody> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _WeightSlider extends StatelessWidget {
+  final double value;
+  final ValueChanged<double> onChanged;
+  const _WeightSlider({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    final v = value.clamp(35.0, 160.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Weight: ${v.toStringAsFixed(1)} kg', style: TextStyle(fontSize: 10.5, color: p.textSecondary, fontWeight: FontWeight.w600)),
+        Slider(value: v, min: 35, max: 160, divisions: 1250, label: v.toStringAsFixed(1), onChanged: (x) => onChanged((x * 10).round() / 10)),
+      ],
     );
   }
 }

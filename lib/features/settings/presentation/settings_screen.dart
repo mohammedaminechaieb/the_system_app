@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/ai/gemini_service.dart';
+import '../../../core/backup/backup_service.dart';
 import '../../../core/providers/core_providers.dart';
 import '../../../core/providers/streak_engine.dart';
 import '../../../core/theme/app_palette.dart';
@@ -14,7 +16,6 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final p = AppPalette.of(context);
     final season = ref.watch(seasonProvider);
     final currentThemeId = ref.watch(themeControllerProvider);
     final streakAsync = ref.watch(streakStateStreamProvider);
@@ -63,7 +64,7 @@ class SettingsScreen extends ConsumerWidget {
                     ButtonSegment(value: Season.winter, label: Text('Winter'), icon: Icon(Icons.ac_unit_rounded)),
                   ],
                   selected: {season},
-                  onSelectionChanged: (s) => ref.read(seasonProvider.notifier).state = s.first,
+                  onSelectionChanged: (s) => ref.read(seasonProvider.notifier).set(s.first),
                 ),
               ],
             ),
@@ -93,7 +94,7 @@ class SettingsScreen extends ConsumerWidget {
                   _InfoRow(label: 'Current streak', value: '${s.currentStreak} days'),
                   _InfoRow(label: 'Longest streak', value: '${s.longestStreak} days'),
                   _InfoRow(label: 'Total points', value: '${s.totalPoints}'),
-                  _InfoRow(label: 'Streak freezes available', value: '${s.freezesAvailable} / 2', isLast: true),
+                  _InfoRow(label: 'Streak freezes available', value: '${s.freezesAvailable} / ${StreakRules.maxFreezes}', isLast: true),
                   const SizedBox(height: 12),
                   Text(
                     'A freeze is earned back every 14-day streak (max 2 held). A fully missed day consumes a freeze automatically if available; otherwise your streak resets and a small point penalty applies.',
@@ -107,17 +108,39 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
 
-          SectionCard(
+          const SectionCard(
             title: 'Data & privacy',
             titleIcon: Icons.lock_outline,
-            child: const Text('All data lives only in a local SQLite database on this device. Nothing is sent anywhere. Uninstalling the app deletes this data permanently.'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'All data lives only in a local SQLite database on this device. The only things that ever leave it are the ones you trigger yourself: '
+                  'a meal photo you send for an AI estimate, or the aggregated weekly stats used for the AI review (both go to Google Gemini). '
+                  'Uninstalling the app deletes this data permanently — export a backup to keep it.',
+                ),
+                SizedBox(height: 14),
+                _ExportButton(),
+              ],
+            ),
           ),
           const SizedBox(height: AppSpacing.lg),
 
           SectionCard(
+            title: 'AI features',
+            titleIcon: Icons.auto_awesome_outlined,
+            child: Text(
+              GeminiService.instance.isConfigured
+                  ? 'Gemini API key found — photo meal estimates and the weekly review are available.'
+                  : 'No Gemini API key configured. Add GEMINI_API_KEY to the .env file and rebuild to enable photo meal estimates and the weekly review.',
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          const SectionCard(
             title: 'About',
             titleIcon: Icons.info_outline,
-            child: const Text('The System — a personal lifestyle, fitness, habits and time-management app.\n\nVersion 1.0.0'),
+            child: Text('The System — a personal lifestyle, fitness, habits and time-management app.\n\nVersion 1.0.0'),
           ),
         ],
       ),
@@ -193,6 +216,40 @@ class _InfoRow extends StatelessWidget {
           Text(label, style: const TextStyle(fontSize: 13)),
           Text(value, style: TextStyle(fontFamily: p.monoFontFamily, fontSize: 13, fontWeight: FontWeight.w700, color: p.primary)),
         ],
+      ),
+    );
+  }
+}
+
+class _ExportButton extends ConsumerStatefulWidget {
+  const _ExportButton();
+  @override
+  ConsumerState<_ExportButton> createState() => _ExportButtonState();
+}
+
+class _ExportButtonState extends ConsumerState<_ExportButton> {
+  bool _busy = false;
+
+  Future<void> _export() async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await BackupService(ref.read(databaseProvider)).exportAndShare();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't export: $e")));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _busy ? null : _export,
+        icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.ios_share, size: 18),
+        label: Text(_busy ? 'Preparing…' : 'Export backup (JSON)'),
       ),
     );
   }

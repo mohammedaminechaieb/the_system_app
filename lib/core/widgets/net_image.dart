@@ -55,9 +55,9 @@ class NetImage extends StatelessWidget {
           ? SizedBox(
               width: 22,
               height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2, color: p.primary.withOpacity(0.5)),
+              child: CircularProgressIndicator(strokeWidth: 2, color: p.primary.withValues(alpha: 0.5)),
             )
-          : Icon(fallbackIcon, color: p.primary.withOpacity(0.55), size: (height ?? 80) * 0.32),
+          : Icon(fallbackIcon, color: p.primary.withValues(alpha: 0.55), size: (height ?? 80) * 0.32),
     );
   }
 }

@@ -50,12 +50,12 @@ class NutritionScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
-                SectionCard(
+                const SectionCard(
                   title: 'Fat loss — what actually works',
                   titleIcon: Icons.trending_down,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       EvidencePill.wellSupported(),
                       SizedBox(height: 10),
                       Text('A sustained deficit of ~500–1,000 kcal/day, targeting no more than ~0.5–0.9 kg/week loss.'),
@@ -68,9 +68,9 @@ class NutritionScreen extends StatelessWidget {
 
                 Text('"Fat-loss machines" — what they actually do', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 10),
-                SectionCard(
+                const SectionCard(
                   child: Column(
-                    children: const [
+                    children: [
                       _DeviceRow(name: 'Sauna / heat belts', well: false),
                       _DeviceRow(name: 'Vibration plates', well: false),
                       _DeviceRow(name: 'EMS belts', well: false),
@@ -83,9 +83,9 @@ class NutritionScreen extends StatelessWidget {
 
                 Text('Low-effort meal ideas', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 10),
-                HorizontalCardScroll(
+                const HorizontalCardScroll(
                   height: 150,
-                  children: const [
+                  children: [
                     _MealCard(name: 'Fast breakfast', desc: 'Yogurt + oats + fruit', img: 'https://images.unsplash.com/photo-1517673400267-0251440c45dc?w=500&q=80'),
                     _MealCard(name: 'Fast lunch', desc: 'Rice + beans/chicken + veg', img: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?w=500&q=80'),
                     _MealCard(name: 'Fast dinner', desc: 'One-pan stir fry', img: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&q=80'),

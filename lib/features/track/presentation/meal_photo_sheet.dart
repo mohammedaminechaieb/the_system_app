@@ -57,11 +57,30 @@ Future<void> showMealPhotoSheet(BuildContext context, WidgetRef ref) async {
   }
 
   if (!context.mounted) return;
-  await showModalBottomSheet(
+  final saved = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     builder: (sheetContext) => _MealPhotoReviewSheet(photoPath: savedPath),
   );
+  // Toast from the caller's context — the sheet's own context is already
+  // gone once it has popped.
+  if (saved == true && context.mounted) {
+    showEntryAddedToast(context, message: 'Meal logged', icon: Icons.restaurant);
+  } else if (saved != true && savedPath != picked.path) {
+    // Cancelled — don't leave an orphaned copy in app storage.
+    try {
+      await File(savedPath).delete();
+    } catch (_) {}
+  }
+}
+
+/// Best guess at which meal a photo taken right now belongs to.
+String defaultMealForNow([DateTime? now]) {
+  final h = (now ?? DateTime.now()).hour;
+  if (h >= 4 && h < 11) return 'Breakfast';
+  if (h >= 11 && h < 15) return 'Lunch';
+  if (h >= 17 && h < 22) return 'Dinner';
+  return 'Snack';
 }
 
 class _MealPhotoReviewSheet extends ConsumerStatefulWidget {
@@ -76,7 +95,7 @@ class _MealPhotoReviewSheetState extends ConsumerState<_MealPhotoReviewSheet> {
   bool _loadingEstimate = true;
   bool _saving = false;
   bool _aiEstimated = false;
-  String? _meal = 'Lunch';
+  String? _meal = defaultMealForNow();
   late final TextEditingController _descController;
   late final TextEditingController _calController;
   late final TextEditingController _proteinController;
@@ -156,8 +175,7 @@ class _MealPhotoReviewSheetState extends ConsumerState<_MealPhotoReviewSheet> {
       aiEstimated: _aiEstimated,
     );
     if (!mounted) return;
-    Navigator.of(context).pop();
-    showEntryAddedToast(context, message: 'Meal logged', icon: Icons.restaurant);
+    Navigator.of(context).pop(true);
   }
 
   @override
@@ -175,7 +193,13 @@ class _MealPhotoReviewSheetState extends ConsumerState<_MealPhotoReviewSheet> {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(p.cardRadius),
-                child: Image.file(File(widget.photoPath), height: 160, width: double.infinity, fit: BoxFit.cover),
+                child: Image.file(
+                  File(widget.photoPath),
+                  height: 160,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(height: 160, color: p.primarySoft, alignment: Alignment.center, child: Icon(Icons.image_not_supported_outlined, color: p.primary)),
+                ),
               ),
               const SizedBox(height: 14),
               if (_loadingEstimate)

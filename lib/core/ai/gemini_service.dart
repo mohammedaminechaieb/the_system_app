@@ -73,8 +73,7 @@ manually, not a medical or precise measurement.''';
 
 class _GeminiBackend implements AiBackend {
   // Free-tier flash model — cheap/fast, good enough for rough estimates
-  // and short coaching text. Swap here if Anthropic... er, Google renames
-  // or deprecates it.
+  // and short coaching text. Swap here if Google renames or deprecates it.
   static const _model = 'gemini-2.5-flash';
   static const _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
   static const _maxRetries = 3;
@@ -135,8 +134,10 @@ class _GeminiBackend implements AiBackend {
       try {
         response = await http
             .post(
-              Uri.parse('$_baseUrl/$_model:generateContent?key=$_apiKey'),
-              headers: {'Content-Type': 'application/json'},
+              // Key goes in a header, not the URL, so it can't leak into
+              // proxy/server access logs.
+              Uri.parse('$_baseUrl/$_model:generateContent'),
+              headers: {'Content-Type': 'application/json', 'x-goog-api-key': _apiKey},
               body: jsonEncode(body),
             )
             .timeout(const Duration(seconds: 30));
@@ -146,14 +147,22 @@ class _GeminiBackend implements AiBackend {
       }
 
       if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
+        try {
+          final decoded = jsonDecode(response.body);
+          return decoded is Map<String, dynamic> ? decoded : null;
+        } catch (_) {
+          return null;
+        }
       }
-      if (response.statusCode == 429 && attempt < _maxRetries) {
+      // Rate limits and transient server errors (Gemini returns 503 when
+      // overloaded) are worth retrying; other 4xx are not.
+      final retryable = response.statusCode == 429 || response.statusCode >= 500;
+      if (retryable && attempt < _maxRetries) {
         await Future.delayed(delay);
         delay *= 2;
         continue;
       }
-      return null; // 4xx/5xx that isn't a retryable rate limit
+      return null; // non-retryable error, or out of retries
     }
     return null;
   }

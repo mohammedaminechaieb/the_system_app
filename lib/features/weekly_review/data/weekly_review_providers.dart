@@ -11,8 +11,7 @@ import '../../quicklog/data/quicklog_providers.dart';
 /// cached AI weekly review.
 String currentWeekStartKey() {
   final now = DateTime.now();
-  final monday = now.subtract(Duration(days: now.weekday - 1));
-  return '${monday.year.toString().padLeft(4, '0')}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}';
+  return dateKeyOf(DateTime(now.year, now.month, now.day - (now.weekday - 1)));
 }
 
 /// The cached review for the current week, if one has already been
@@ -20,6 +19,7 @@ String currentWeekStartKey() {
 /// "show a generate button", not an error.
 final cachedWeeklyReviewProvider = StreamProvider<AiWeeklyReview?>((ref) {
   final db = ref.watch(databaseProvider);
+  ref.watch(todayKeyProvider); // roll over to the new week's slot on Monday
   final weekStart = currentWeekStartKey();
   return (db.select(db.aiWeeklyReviews)..where((t) => t.weekStart.equals(weekStart))).watchSingleOrNull();
 });
@@ -46,10 +46,19 @@ class WeeklyReviewActions {
     }
 
     final statLines = <String>[];
+    final averagedKeys = kAveragedQuickLogTypes.map((t) => t.key).toSet();
     byType.forEach((type, entries) {
-      final total = entries.fold<double>(0, (sum, e) => sum + (e.value ?? 1));
       final days = entries.map((e) => e.date).toSet().length;
-      statLines.add('$type: $days day(s) logged, total value ~${total.toStringAsFixed(1)} (unit: ${entries.first.unit ?? 'count'})');
+      final unit = entries.first.unit ?? 'count';
+      if (averagedKeys.contains(type)) {
+        final values = entries.where((e) => e.value != null).map((e) => e.value!).toList();
+        if (values.isEmpty) return;
+        final avg = values.reduce((a, b) => a + b) / values.length;
+        statLines.add('$type: $days day(s) logged, average ${avg.toStringAsFixed(1)} $unit');
+      } else {
+        final total = entries.fold<double>(0, (sum, e) => sum + (e.value ?? 1));
+        statLines.add('$type: $days day(s) logged, total ~${total.toStringAsFixed(1)} $unit');
+      }
     });
 
     final insights = ref.read(insightsProvider);
@@ -77,6 +86,9 @@ ${insightLines.isEmpty ? '(none detected yet — not enough data)' : insightLine
           AiWeeklyReviewsCompanion(
             weekStart: Value(currentWeekStartKey()),
             content: Value(result),
+            // Set explicitly: on a refresh (upsert) the column default
+            // doesn't re-apply, so "Generated …" would otherwise go stale.
+            generatedAt: Value(DateTime.now()),
           ),
         );
     return result;

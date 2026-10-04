@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/core_providers.dart';
 import '../../../core/providers/streak_engine.dart';
 import '../../../core/theme/app_palette.dart';
+import '../../../core/widgets/entry_toast.dart';
 import '../../../core/widgets/picker_field.dart';
 import '../../../core/widgets/shared_widgets.dart';
 import '../data/correlation_providers.dart';
@@ -114,6 +115,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                         ? null
                         : () {
                             saveWeeklyReview(db, date: todayKey, win: _win, adjust: _adjust);
+                            showEntryAddedToast(context, message: 'Review saved', icon: Icons.rate_review);
                             setState(() {
                               _win = null;
                               _adjust = null;
@@ -193,10 +195,10 @@ class _ScoreBreakdown extends StatelessWidget {
       ('Fitness (capped at plan)', 20.0, (stats.workoutsThisWeek.clamp(0, 4) / 4) * 20),
       ('Sleep consistency', 15.0, stats.sleepEntriesThisWeek >= 5 ? 15.0 : stats.sleepEntriesThisWeek * 3.0),
       ('Learning', 15.0, (stats.learningThisWeek.clamp(0, 5) / 5) * 15),
-      ('Productivity', 10.0, 10.0),
-      ('Social', 5.0, 5.0),
-      ('Fun', 5.0, 5.0),
-      ('Recovery', 5.0, 5.0),
+      ('Habits completed', 10.0, (stats.habitCompletionRate ?? 0).clamp(0.0, 1.0) * 10),
+      ('Social', 5.0, stats.socialSessions >= 1 ? 5.0 : 0.0),
+      ('Fun (hobby time)', 5.0, (stats.funSessions.clamp(0, 2) / 2) * 5),
+      ('Recovery (avg energy)', 5.0, stats.avgEnergy == null ? 0.0 : ((stats.avgEnergy! - 1) / 2).clamp(0.0, 1.0) * 5),
     ];
     final total = categories.fold<double>(0, (sum, c) => sum + c.$3).round();
 
@@ -314,7 +316,7 @@ class _SleepTrendCard extends ConsumerWidget {
                       show: true,
                       getDotPainter: (spot, percent, bar, index) => FlDotCirclePainter(radius: 4, color: p.primary, strokeWidth: 2, strokeColor: p.surfaceRaised),
                     ),
-                    belowBarData: BarAreaData(show: true, color: p.primary.withOpacity(0.12)),
+                    belowBarData: BarAreaData(show: true, color: p.primary.withValues(alpha: 0.12)),
                   ),
                 ],
               ),

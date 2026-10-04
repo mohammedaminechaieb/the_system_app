@@ -6,6 +6,7 @@ import '../../../core/providers/core_providers.dart';
 import '../../../core/providers/streak_engine.dart';
 import '../../../core/theme/app_palette.dart';
 import '../../../core/widgets/animated_habit_check.dart';
+import '../../../core/widgets/habit_icons.dart';
 import '../../../core/widgets/shared_widgets.dart';
 import '../../habits/data/habits_providers.dart';
 import '../../today/data/today_providers.dart';
@@ -47,7 +48,7 @@ class GateScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('GOOD MORNING', style: TextStyle(color: p.primary, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 1.4)),
+                    Text(_greeting(now.hour), style: TextStyle(color: p.primary, fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 1.4)),
                     const SizedBox(height: 6),
                     Text(dateLabel, style: Theme.of(context).textTheme.displayLarge),
                     const SizedBox(height: 4),
@@ -83,7 +84,10 @@ class GateScreen extends ConsumerWidget {
                         data: (habits) {
                           final core = habits.where((h) => h.habit.isCore).toList();
                           return Column(
-                            children: [for (final h in core) _GateHabitTile(habitId: h.habit.id, label: h.habit.label, done: h.done)],
+                            children: [
+                              if (core.isEmpty) Text('No core habits set — choose some in Settings → Habits.', style: TextStyle(color: p.textFaint, fontSize: 12.5)),
+                              for (final h in core) _GateHabitTile(habitId: h.habit.id, label: h.habit.label, icon: h.habit.icon, done: h.done),
+                            ],
                           );
                         },
                         loading: () => const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Center(child: CircularProgressIndicator())),
@@ -188,7 +192,6 @@ class _EnergyRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final p = AppPalette.of(context);
     final stateAsync = ref.watch(todayStateProvider);
     final selected = stateAsync.valueOrNull?.energyLevel;
 
@@ -236,7 +239,7 @@ class _EnergyOption extends StatelessWidget {
           children: [
             Text('$level', style: TextStyle(fontFamily: p.monoFontFamily, fontSize: 16, fontWeight: FontWeight.w700, color: selected ? p.primaryOn : p.textPrimary)),
             const SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 8.5, color: selected ? p.primaryOn.withOpacity(0.85) : p.textFaint, fontWeight: FontWeight.w600)),
+            Text(label, style: TextStyle(fontSize: 8.5, color: selected ? p.primaryOn.withValues(alpha: 0.85) : p.textFaint, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
@@ -247,11 +250,13 @@ class _EnergyOption extends StatelessWidget {
 class _GateHabitTile extends ConsumerWidget {
   final String habitId;
   final String label;
+  final String icon;
   final bool done;
-  const _GateHabitTile({required this.habitId, required this.label, required this.done});
+  const _GateHabitTile({required this.habitId, required this.label, required this.icon, required this.done});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final p = AppPalette.of(context);
     final todayKey = ref.watch(todayKeyProvider);
     return InkWell(
       onTap: () => ref.read(habitActionsProvider).toggle(habitId, todayKey),
@@ -262,10 +267,19 @@ class _GateHabitTile extends ConsumerWidget {
           children: [
             AnimatedHabitCheck(done: done, onTap: () => ref.read(habitActionsProvider).toggle(habitId, todayKey)),
             const SizedBox(width: 12),
+            Icon(habitIcon(icon), size: 17, color: done ? p.primary : p.textFaint),
+            const SizedBox(width: 8),
             Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyLarge)),
           ],
         ),
       ),
     );
   }
+}
+
+String _greeting(int hour) {
+  if (hour < 5) return 'LATE NIGHT CHECK-IN';
+  if (hour < 12) return 'GOOD MORNING';
+  if (hour < 18) return 'GOOD AFTERNOON';
+  return 'GOOD EVENING';
 }

@@ -21,7 +21,14 @@ class _AtomicHabitsReaderScreenState extends ConsumerState<AtomicHabitsReaderScr
   @override
   void initState() {
     super.initState();
-    _controller = PageController();
+    // Resume where the person left off, unless the chapter was finished
+    // (then a re-read starts from the top).
+    final progress = ref.read(readingProgressProvider).valueOrNull?[widget.chapter.id];
+    final total = widget.chapter.sections.length;
+    if (progress != null && !progress.completed && total > 0) {
+      _page = progress.lastPageIndex.clamp(0, total - 1);
+    }
+    _controller = PageController(initialPage: _page);
   }
 
   @override

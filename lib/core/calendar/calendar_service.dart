@@ -18,6 +18,15 @@ class CalendarService {
   final DeviceCalendarPlugin _plugin = DeviceCalendarPlugin();
   CalendarService(this.db);
 
+  Future<bool> hasPermissions() async {
+    try {
+      final result = await _plugin.hasPermissions();
+      return result.data == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> requestPermissions() async {
     try {
       var result = await _plugin.hasPermissions();
@@ -64,9 +73,13 @@ class CalendarService {
     final end = start.add(Duration(minutes: durationMin));
     final dateKey = DateFormat('yyyy-MM-dd').format(now);
 
-    // Don't double-schedule if today's block already exists.
+    // Don't double-schedule if today's block already exists at this time;
+    // if the time changed, replace the old block.
     final existing = await (db.select(db.habitCalendarEvents)..where((t) => t.habitId.equals(habitId) & t.date.equals(dateKey))).getSingleOrNull();
-    if (existing != null) return true;
+    if (existing != null) {
+      if (existing.scheduledStart == start && existing.scheduledEnd == end) return true;
+      await cancelForToday(habitId);
+    }
 
     try {
       final event = Event(calendar!.id, title: label, start: tz.TZDateTime.from(start, tz.local), end: tz.TZDateTime.from(end, tz.local));
@@ -85,6 +98,18 @@ class CalendarService {
       return true;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// Creates today's block for every active habit that has a scheduled
+  /// time. Called on launch and on day rollover so "scheduled" really means
+  /// every day, not just the day the time was picked. Never prompts for
+  /// permission — if access hasn't been granted yet this is a no-op.
+  Future<void> scheduleTodayForAllHabits() async {
+    if (!await hasPermissions()) return;
+    final habits = await (db.select(db.habits)..where((t) => t.archived.equals(false) & t.scheduledTime.isNotNull())).get();
+    for (final h in habits) {
+      await scheduleForToday(h.id, h.label, h.scheduledTime!);
     }
   }
 

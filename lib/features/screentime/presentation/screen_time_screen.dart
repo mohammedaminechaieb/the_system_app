@@ -6,7 +6,6 @@ import '../../../core/database/app_database.dart';
 import '../../../core/native/screen_time_service.dart';
 import '../../../core/theme/app_palette.dart';
 import '../../../core/widgets/shared_widgets.dart';
-import '../../today/data/today_providers.dart';
 import '../data/screen_time_providers.dart';
 
 const _kRedeemPresets = [5, 10, 15, 30];

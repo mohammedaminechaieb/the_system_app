@@ -14,48 +14,49 @@ class HabitWithStatus {
 }
 
 /// All active (non-archived) habits, ordered, joined with today's completion.
+/// Watches both `habits` and `habit_logs`, so ticking a habit (which only
+/// writes a log row) updates the list immediately.
 final todayHabitsProvider = StreamProvider<List<HabitWithStatus>>((ref) {
-  final db = ref.watch(databaseProvider);
-  final todayKey = ref.watch(todayKeyProvider);
-
-  final habitsQuery = (db.select(db.habits)
-        ..where((t) => t.archived.equals(false))
-        ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
-      .watch();
-
-  final logsQuery = (db.select(db.habitLogs)..where((t) => t.date.equals(todayKey))).watch();
-
-  return habitsQuery.asyncMap((habits) async {
-    final logs = await logsQuery.first;
-    final logMap = {for (final l in logs) l.habitId: l.done};
-    final result = <HabitWithStatus>[];
-    for (final h in habits) {
-      final streak = await _computeHabitStreak(db, h.id);
-      result.add(HabitWithStatus(habit: h, done: logMap[h.id] ?? false, streakDays: streak));
-    }
-    return result;
-  });
+  return watchTodayHabits(ref.watch(databaseProvider), ref.watch(todayKeyProvider));
 });
 
-Future<int> _computeHabitStreak(AppDatabase db, String habitId) async {
-  final rows = await (db.select(db.habitLogs)
-        ..where((t) => t.habitId.equals(habitId) & t.done.equals(true))
-        ..orderBy([(t) => OrderingTerm.desc(t.date)]))
-      .get();
-  if (rows.isEmpty) return 0;
+Stream<List<HabitWithStatus>> watchTodayHabits(AppDatabase db, String todayKey) {
+  return watchTables(db, {db.habits, db.habitLogs}, () async {
+    final habits = await (db.select(db.habits)
+          ..where((t) => t.archived.equals(false))
+          ..orderBy([(t) => OrderingTerm(expression: t.sortOrder)]))
+        .get();
+    final doneLogs = await (db.select(db.habitLogs)..where((t) => t.done.equals(true))).get();
 
-  final dates = rows.map((r) => DateTime.parse(r.date)).toSet();
-  int streak = 0;
-  DateTime cursor = DateTime.now();
-  cursor = DateTime(cursor.year, cursor.month, cursor.day);
-  // Allow today to be "pending" — start counting from today if present,
-  // otherwise from yesterday, so an not-yet-logged today doesn't zero the streak.
-  if (!dates.contains(cursor)) {
+    final doneDatesByHabit = <String, Set<String>>{};
+    for (final l in doneLogs) {
+      doneDatesByHabit.putIfAbsent(l.habitId, () => {}).add(l.date);
+    }
+    return [
+      for (final h in habits)
+        HabitWithStatus(
+          habit: h,
+          done: doneDatesByHabit[h.id]?.contains(todayKey) ?? false,
+          streakDays: computeHabitStreak(doneDatesByHabit[h.id] ?? const {}, DateTime.parse(todayKey)),
+        ),
+    ];
+  });
+}
+
+/// Consecutive days ending today (or yesterday, if today isn't logged yet —
+/// a not-yet-logged today shouldn't zero the streak) found in [doneDates].
+int computeHabitStreak(Set<String> doneDates, DateTime today) {
+  if (doneDates.isEmpty) return 0;
+  var cursor = DateTime(today.year, today.month, today.day);
+  if (!doneDates.contains(dateKeyOf(cursor))) {
     cursor = cursor.subtract(const Duration(days: 1));
   }
-  while (dates.contains(cursor)) {
+  var streak = 0;
+  while (doneDates.contains(dateKeyOf(cursor))) {
     streak++;
-    cursor = cursor.subtract(const Duration(days: 1));
+    // Constructing from parts (rather than subtracting 24h) stays correct
+    // across daylight-saving changes.
+    cursor = DateTime(cursor.year, cursor.month, cursor.day - 1);
   }
   return streak;
 }
@@ -67,33 +68,42 @@ class HabitActions {
   final StreakEngine streakEngine;
   HabitActions(this.db, this.streakEngine);
 
-  Future<void> toggle(String habitId, String dateKey) async {
-    final existing = await (db.select(db.habitLogs)
-          ..where((t) => t.habitId.equals(habitId) & t.date.equals(dateKey)))
-        .getSingleOrNull();
+  Future<void> toggle(String habitId, String dateKey) => db.transaction(() async {
+        final existing = await (db.select(db.habitLogs)
+              ..where((t) => t.habitId.equals(habitId) & t.date.equals(dateKey)))
+            .getSingleOrNull();
 
-    final newDone = !(existing?.done ?? false);
+        final newDone = !(existing?.done ?? false);
 
-    await db.into(db.habitLogs).insertOnConflictUpdate(
-          HabitLogsCompanion(
-            habitId: Value(habitId),
-            date: Value(dateKey),
-            done: Value(newDone),
-            completedAt: newDone ? Value(DateTime.now()) : const Value.absent(),
-          ),
-        );
+        await db.into(db.habitLogs).insertOnConflictUpdate(
+              HabitLogsCompanion(
+                habitId: Value(habitId),
+                date: Value(dateKey),
+                done: Value(newDone),
+                completedAt: Value(newDone ? DateTime.now() : null),
+                // A tick resolves any earlier 'missed_opportunity' marker.
+                outcome: newDone ? const Value(null) : const Value.absent(),
+              ),
+            );
 
-    if (newDone) {
-      final habit = await (db.select(db.habits)..where((t) => t.id.equals(habitId))).getSingleOrNull();
-      await streakEngine.awardHabitPoint(tier: habit?.tier ?? 1);
-      await QuickLogActions(db).add(type: QuickLogType.habit, subtype: habitId, value: 1, unit: 'done', dateKey: dateKey);
-    }
+        final habit = await (db.select(db.habits)..where((t) => t.id.equals(habitId))).getSingleOrNull();
+        final tier = habit?.tier ?? 1;
+        final quickLogs = QuickLogActions(db);
+        if (newDone) {
+          await streakEngine.awardHabitPoint(tier: tier);
+          await quickLogs.add(type: QuickLogType.habit, subtype: habitId, value: 1, unit: 'done', dateKey: dateKey);
+        } else {
+          // Undo everything the tick granted, so tick/untick can't farm
+          // points or screen time.
+          await streakEngine.revokeHabitPoint(tier: tier);
+          await quickLogs.deleteHabitTick(habitId, dateKey);
+        }
 
-    await _reevaluateGate(dateKey);
-  }
+        await reevaluateGate(dateKey);
+      });
 
   /// The gate passes once every core habit is done for the day.
-  Future<void> _reevaluateGate(String dateKey) async {
+  Future<void> reevaluateGate(String dateKey) async {
     final coreHabits = await (db.select(db.habits)
           ..where((t) => t.isCore.equals(true) & t.archived.equals(false)))
         .get();
@@ -103,11 +113,17 @@ class HabitActions {
     final allCoreDone = coreHabits.every((h) => doneIds.contains(h.id));
 
     await db.into(db.dailyState).insertOnConflictUpdate(
-          DailyStateCompanion(date: Value(dateKey), gatePassed: Value(allCoreDone)),
+          DailyStateCompanion(
+            date: Value(dateKey),
+            gatePassed: Value(allCoreDone),
+            gatePassedAt: allCoreDone ? Value(DateTime.now()) : const Value(null),
+          ),
         );
 
-    if (allCoreDone) {
-      await streakEngine.markDayComplete(DateTime.now(), allCoreDone: true);
+    // With no core habits there's nothing to complete — don't hand out a
+    // free streak day just because the set is empty.
+    if (allCoreDone && coreHabits.isNotEmpty) {
+      await streakEngine.markDayComplete(DateTime.parse(dateKey), allCoreDone: true);
     }
   }
 }
@@ -126,16 +142,24 @@ class HabitManagement {
   HabitManagement(this.db);
 
   Future<void> create({required String label, required String icon, int tier = 1, bool isCore = false}) async {
-    final id = label.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_');
-    final existingCount = await db.select(db.habits).get().then((h) => h.length);
-    await db.into(db.habits).insertOnConflictUpdate(
+    final existing = await db.select(db.habits).get();
+    final existingIds = existing.map((h) => h.id).toSet();
+    // Slug from the label, de-duplicated — never overwrite an existing habit
+    // (and its history) just because a new one has a similar name.
+    var base = label.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_').replaceAll(RegExp(r'^_+|_+$'), '');
+    if (base.isEmpty) base = 'habit';
+    var id = base;
+    for (var n = 2; existingIds.contains(id); n++) {
+      id = '${base}_$n';
+    }
+    await db.into(db.habits).insert(
           HabitsCompanion(
             id: Value(id),
             label: Value(label),
             icon: Value(icon),
             tier: Value(tier),
             isCore: Value(isCore),
-            sortOrder: Value(existingCount),
+            sortOrder: Value(existing.length),
           ),
         );
   }

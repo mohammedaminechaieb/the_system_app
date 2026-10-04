@@ -3,13 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/calendar/calendar_service.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/providers/core_providers.dart';
 import '../../../core/theme/app_palette.dart';
+import '../../../core/widgets/habit_icons.dart';
 import '../../../core/widgets/picker_field.dart';
 import '../../../core/widgets/shared_widgets.dart';
 import '../data/habits_providers.dart';
 
 const _kTierLabels = {1: 'Easy', 2: 'Medium', 3: 'Hard'};
-const _kIconChoices = ['fitness_center', 'self_improvement', 'bedtime', 'menu_book', 'restaurant', 'sports_martial_arts', 'directions_run', 'water_drop', 'check'];
 
 /// Lets the person set a difficulty tier per habit (easy/medium/hard —
 /// scales the points it contributes, see StreakEngine.awardHabitPoint),
@@ -52,7 +53,7 @@ class ManageHabitsScreen extends ConsumerWidget {
     int tier = 1;
     bool isCore = false;
 
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: p.surface,
@@ -67,12 +68,21 @@ class ManageHabitsScreen extends ConsumerWidget {
               children: [
                 Text('New habit', style: Theme.of(sheetContext).textTheme.displaySmall),
                 const SizedBox(height: 14),
-                TextField(controller: labelController, decoration: const InputDecoration(labelText: 'Habit name')),
+                TextField(
+                  controller: labelController,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.sentences,
+                  // Rebuild so the "Add habit" button enables as soon as
+                  // there's a name.
+                  onChanged: (_) => setSheetState(() {}),
+                  decoration: const InputDecoration(labelText: 'Habit name'),
+                ),
                 const SizedBox(height: 12),
                 PickerField<String>(
                   label: 'Icon',
                   value: icon,
-                  options: [for (final i in _kIconChoices) PickerOption(value: i, label: i)],
+                  leadingIcon: habitIcon(icon),
+                  options: [for (final e in kHabitIcons.entries) PickerOption(value: e.key, label: habitIconLabel(e.key), icon: e.value)],
                   onChanged: (v) => setSheetState(() => icon = v),
                 ),
                 const SizedBox(height: 12),
@@ -108,7 +118,7 @@ class ManageHabitsScreen extends ConsumerWidget {
           ),
         ),
       ),
-    );
+    ).whenComplete(labelController.dispose);
   }
 }
 
@@ -121,6 +131,7 @@ Future<void> _pickScheduleTime(BuildContext context, WidgetRef ref, Habit habit)
   final picked = await showTimePicker(context: context, initialTime: initial);
   if (picked == null) return;
   final hhmm = '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+  if (hhmm == habit.scheduledTime) return;
   await ref.read(habitManagementProvider).setScheduledTime(habit.id, hhmm);
 
   final created = await ref.read(calendarServiceProvider).scheduleForToday(habit.id, habit.label, hhmm);
@@ -129,6 +140,10 @@ Future<void> _pickScheduleTime(BuildContext context, WidgetRef ref, Habit habit)
     SnackBar(content: Text(created ? "Scheduled — today's block added to your calendar." : "Time saved, but couldn't add a calendar block (check calendar permission).")),
   );
 }
+
+/// Changing which habits are core (or active) changes what today's gate
+/// requires, so re-check it rather than leaving a stale pass/fail.
+Future<void> _refreshGate(WidgetRef ref) => ref.read(habitActionsProvider).reevaluateGate(ref.read(todayKeyProvider));
 
 class _HabitManageTile extends ConsumerWidget {
   final Habit habit;
@@ -148,6 +163,8 @@ class _HabitManageTile extends ConsumerWidget {
           children: [
             Row(
               children: [
+                Icon(habitIcon(habit.icon), size: 18, color: habit.archived ? p.textFaint : p.primary),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     habit.label,
@@ -156,7 +173,11 @@ class _HabitManageTile extends ConsumerWidget {
                 ),
                 Switch(
                   value: !habit.archived,
-                  onChanged: (v) => management.setArchived(habit.id, !v),
+                  onChanged: (v) async {
+                    await management.setArchived(habit.id, !v);
+                    if (!v) await ref.read(calendarServiceProvider).cancelForToday(habit.id);
+                    await _refreshGate(ref);
+                  },
                 ),
               ],
             ),
@@ -176,7 +197,13 @@ class _HabitManageTile extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text('Core', style: TextStyle(fontSize: 10.5, color: p.textSecondary, fontWeight: FontWeight.w600)),
-                    Switch(value: habit.isCore, onChanged: (v) => management.setCore(habit.id, v)),
+                    Switch(
+                      value: habit.isCore,
+                      onChanged: (v) async {
+                        await management.setCore(habit.id, v);
+                        await _refreshGate(ref);
+                      },
+                    ),
                   ],
                 ),
               ],
@@ -197,7 +224,14 @@ class _HabitManageTile extends ConsumerWidget {
                   child: Text(habit.scheduledTime != null ? 'Change' : 'Schedule'),
                 ),
                 if (habit.scheduledTime != null)
-                  IconButton(icon: Icon(Icons.close, size: 16, color: p.danger), onPressed: () => management.setScheduledTime(habit.id, null)),
+                  IconButton(
+                    icon: Icon(Icons.close, size: 16, color: p.danger),
+                    tooltip: 'Remove schedule',
+                    onPressed: () async {
+                      await management.setScheduledTime(habit.id, null);
+                      await ref.read(calendarServiceProvider).cancelForToday(habit.id);
+                    },
+                  ),
               ],
             ),
           ],

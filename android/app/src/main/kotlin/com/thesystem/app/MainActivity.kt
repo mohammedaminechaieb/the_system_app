@@ -78,8 +78,9 @@ class MainActivity : FlutterActivity() {
         val startOfDay = cal.timeInMillis
         val now = System.currentTimeMillis()
 
-        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDay, now)
-        val match = stats.firstOrNull { it.packageName == pkg }
-        return (match?.totalTimeInForeground ?: 0L) / 60000L
+        // queryUsageStats can return several buckets for the same package;
+        // the aggregated query merges them instead of picking one at random.
+        val stats = usm.queryAndAggregateUsageStats(startOfDay, now)
+        return (stats[pkg]?.totalTimeInForeground ?: 0L) / 60000L
     }
 }

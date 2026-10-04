@@ -12,16 +12,19 @@ season-aware (summer/winter) training and nutrition guidance.
 - **Picker-based entry everywhere**: exercise type, sleep times, meal choices, hobby categories, ratings — all tap-to-select bottom sheets or chip/slider controls. Free-text typing is gone except where genuinely open-ended.
 - **Gate screen rebuilt**: no disabled dead-end button. The bottom action is always tappable — either "All set — continue" or "Skip for now · X/Y done" — so there's no state where nothing responds.
 
-## IMPORTANT — read before running
+## Before running
 
-This project was written in a sandboxed environment **without the Flutter
-SDK installed and without access to pub.dev**, so it has been carefully
-hand-checked for consistency (imports, class names, drift/Riverpod API
-usage) but **has not been compiled or run**. Follow the steps below exactly;
-the first two commands (`flutter pub get` and the `build_runner` build) are
-not optional — the project will not compile without them, because drift and
-Riverpod both rely on generated code (`*.g.dart` files) that isn't checked
-into this project.
+`flutter analyze` is clean and `flutter test` passes. The generated drift
+code (`app_database.g.dart`) is checked in; re-run `build_runner` (step 4)
+only after changing a table in `app_database.dart`.
+
+**Gemini API key (optional).** Put your key in `.env` as
+`GEMINI_API_KEY=...` to enable photo meal estimates and the weekly AI
+review. `.env` is committed with an empty value because it must exist as a
+bundled asset — after adding your key, run
+`git update-index --skip-worktree .env` so it never gets committed. Note
+that a key bundled into an APK can be extracted from it, so only use a
+free-tier key you are comfortable with that risk for.
 
 ## 1. Prerequisites
 
@@ -56,8 +59,8 @@ flutter pub get
 ## 4. Generate drift's database code
 
 The database schema in `lib/core/database/app_database.dart` uses
-`part 'app_database.g.dart';` — this file does not exist yet and must be
-generated:
+`part 'app_database.g.dart';` — the generated file is checked in, so this
+step is only needed after schema changes:
 
 ```bash
 dart run build_runner build --delete-conflicting-outputs
@@ -82,20 +85,12 @@ flutter build apk --release
 # whichever app you use to open the file, e.g. your file manager).
 ```
 
-## 6. If `flutter analyze` reports anything
-
-Run this before your first `flutter run` to catch anything the hand-review
-here might have missed:
+## 6. Checks
 
 ```bash
-flutter analyze
+flutter analyze   # static analysis — should report no issues
+flutter test      # unit + in-memory database tests (test/)
 ```
-
-If it reports errors, they will almost always be one of: a drift API name
-that shifted slightly between versions (check the `drift` version pinned in
-`pubspec.yaml` against your generated `.g.dart` file), or a Riverpod
-provider type mismatch. Both are usually one-line fixes — paste the exact
-error back if you want help resolving it.
 
 ## Project structure
 
@@ -134,4 +129,16 @@ lib/
   available (max 2, one earned back every 14-day streak). If no freeze is
   available, the streak resets and a small point penalty applies. Points
   never go below zero — the goal is friction against skipping, not
-  punishment that makes the app feel bad to reopen after a lapse.
+  punishment that makes the app feel bad to reopen after a lapse. Each
+  missed day is charged exactly once (the engine remembers how far it has
+  reconciled), and unticking a habit takes back the points and screen time
+  that tick earned.
+- **Day rollover**: the app notices a new day on resume and at midnight —
+  "today" moves forward, missed days are reconciled, scheduled habits get
+  today's calendar block, and the morning check-in appears again.
+
+## Backup
+
+Settings → Data & privacy → **Export backup (JSON)** writes every table to a
+single JSON file and opens the share sheet (save it to Drive, email it to
+yourself, etc.). Meal photos are not included, only their file paths.

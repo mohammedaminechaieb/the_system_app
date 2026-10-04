@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -13,8 +15,9 @@ const _uuid = Uuid();
 /// from one place, without needing to know about each domain table. This
 /// is intentionally "fire and forget" alongside the structured insert —
 /// the domain table stays the source of truth for its own detail screen.
-Future<void> _mirrorToQuickLog(
+Future<String> _mirrorToQuickLog(
   AppDatabase db, {
+  required String id,
   required QuickLogType type,
   String? subtype,
   double? value,
@@ -23,6 +26,7 @@ Future<void> _mirrorToQuickLog(
   required String dateKey,
 }) {
   return QuickLogActions(db).add(
+    id: id,
     type: type,
     subtype: subtype,
     value: value,
@@ -39,8 +43,9 @@ final exerciseLogsProvider = StreamProvider<List<ExerciseLog>>((ref) {
 });
 
 Future<void> addExerciseLog(AppDatabase db, {required String date, required String type, int? durationMin, int? energy, String? notes, String? muscleGroup}) async {
+  final id = _uuid.v4();
   await db.into(db.exerciseLogs).insert(ExerciseLogsCompanion(
-        id: Value(_uuid.v4()),
+        id: Value(id),
         date: Value(date),
         type: Value(type),
         durationMin: Value(durationMin),
@@ -48,7 +53,7 @@ Future<void> addExerciseLog(AppDatabase db, {required String date, required Stri
         notes: Value(notes),
         muscleGroup: Value(muscleGroup),
       ));
-  await _mirrorToQuickLog(db, type: QuickLogType.exercise, subtype: muscleGroup ?? type, value: durationMin?.toDouble(), unit: 'minutes', note: notes, dateKey: date);
+  await _mirrorToQuickLog(db, id: id, type: QuickLogType.exercise, subtype: muscleGroup ?? type, value: durationMin?.toDouble(), unit: 'minutes', note: notes, dateKey: date);
 }
 
 // ===== SLEEP =====
@@ -58,15 +63,16 @@ final sleepLogsProvider = StreamProvider<List<SleepLog>>((ref) {
 });
 
 Future<void> addSleepLog(AppDatabase db, {required String date, String? bedtime, String? wake, double? hours, int? quality}) async {
+  final id = _uuid.v4();
   await db.into(db.sleepLogs).insert(SleepLogsCompanion(
-        id: Value(_uuid.v4()),
+        id: Value(id),
         date: Value(date),
         bedtime: Value(bedtime),
         wakeTime: Value(wake),
         hours: Value(hours),
         quality: Value(quality),
       ));
-  await _mirrorToQuickLog(db, type: QuickLogType.sleep, value: hours, unit: 'hours', dateKey: date);
+  await _mirrorToQuickLog(db, id: id, type: QuickLogType.sleep, value: hours, unit: 'hours', dateKey: date);
 }
 
 // ===== WEIGHT =====
@@ -76,13 +82,14 @@ final weightLogsProvider = StreamProvider<List<WeightLog>>((ref) {
 });
 
 Future<void> addWeightLog(AppDatabase db, {required String date, required double weightKg, String? notes}) async {
+  final id = _uuid.v4();
   await db.into(db.weightLogs).insert(WeightLogsCompanion(
-        id: Value(_uuid.v4()),
+        id: Value(id),
         date: Value(date),
         weightKg: Value(weightKg),
         notes: Value(notes),
       ));
-  await _mirrorToQuickLog(db, type: QuickLogType.weight, value: weightKg, unit: 'kg', note: notes, dateKey: date);
+  await _mirrorToQuickLog(db, id: id, type: QuickLogType.weight, value: weightKg, unit: 'kg', note: notes, dateKey: date);
 }
 
 // ===== LEARNING =====
@@ -92,14 +99,15 @@ final learningLogsProvider = StreamProvider<List<LearningLog>>((ref) {
 });
 
 Future<void> addLearningLog(AppDatabase db, {required String date, required String subject, int? durationMin, int? focus}) async {
+  final id = _uuid.v4();
   await db.into(db.learningLogs).insert(LearningLogsCompanion(
-        id: Value(_uuid.v4()),
+        id: Value(id),
         date: Value(date),
         subject: Value(subject),
         durationMin: Value(durationMin),
         focusRating: Value(focus),
       ));
-  await _mirrorToQuickLog(db, type: QuickLogType.learning, subtype: subject, value: durationMin?.toDouble(), unit: 'minutes', dateKey: date);
+  await _mirrorToQuickLog(db, id: id, type: QuickLogType.learning, subtype: subject, value: durationMin?.toDouble(), unit: 'minutes', dateKey: date);
 }
 
 // ===== MARTIAL ARTS =====
@@ -109,14 +117,15 @@ final martialLogsProvider = StreamProvider<List<MartialArtsLog>>((ref) {
 });
 
 Future<void> addMartialLog(AppDatabase db, {required String date, String? focus, String? rank, String? note}) async {
+  final id = _uuid.v4();
   await db.into(db.martialArtsLogs).insert(MartialArtsLogsCompanion(
-        id: Value(_uuid.v4()),
+        id: Value(id),
         date: Value(date),
         focus: Value(focus),
         rank: Value(rank),
         note: Value(note),
       ));
-  await _mirrorToQuickLog(db, type: QuickLogType.martialArts, subtype: focus, note: note, dateKey: date);
+  await _mirrorToQuickLog(db, id: id, type: QuickLogType.martialArts, subtype: focus, note: note, dateKey: date);
 }
 
 // ===== HOBBY =====
@@ -126,14 +135,15 @@ final hobbyLogsProvider = StreamProvider<List<HobbyLog>>((ref) {
 });
 
 Future<void> addHobbyLog(AppDatabase db, {required String date, required String category, required String hobby, int? durationMin}) async {
+  final id = _uuid.v4();
   await db.into(db.hobbyLogs).insert(HobbyLogsCompanion(
-        id: Value(_uuid.v4()),
+        id: Value(id),
         date: Value(date),
         category: Value(category),
         hobby: Value(hobby),
         durationMin: Value(durationMin),
       ));
-  await _mirrorToQuickLog(db, type: QuickLogType.hobby, subtype: hobby, value: durationMin?.toDouble(), unit: 'minutes', dateKey: date);
+  await _mirrorToQuickLog(db, id: id, type: QuickLogType.hobby, subtype: hobby, value: durationMin?.toDouble(), unit: 'minutes', dateKey: date);
 }
 
 // ===== NUTRITION =====
@@ -155,8 +165,9 @@ Future<void> addNutritionLog(
   double? estFatG,
   bool aiEstimated = false,
 }) async {
+  final id = _uuid.v4();
   await db.into(db.nutritionLogs).insert(NutritionLogsCompanion(
-        id: Value(_uuid.v4()),
+        id: Value(id),
         date: Value(date),
         meal: Value(meal),
         description: Value(description),
@@ -168,32 +179,39 @@ Future<void> addNutritionLog(
         estFatG: Value(estFatG),
         aiEstimated: Value(aiEstimated),
       ));
-  await _mirrorToQuickLog(db, type: QuickLogType.meal, subtype: meal, value: calories, unit: 'kcal', note: description, dateKey: date);
+  await _mirrorToQuickLog(db, id: id, type: QuickLogType.meal, subtype: meal, value: calories, unit: 'kcal', note: description, dateKey: date);
 }
 
 // ===== DELETE (generic by table name) =====
+/// Deletes a domain row plus the QuickLog mirror written alongside it (same
+/// id), so the dashboard, correlations and screen-time balance forget it
+/// too. A meal photo kept in app storage is removed with its entry.
 Future<void> deleteLogRow(AppDatabase db, String table, String id) async {
   switch (table) {
     case 'exercise':
       await (db.delete(db.exerciseLogs)..where((t) => t.id.equals(id))).go();
-      break;
     case 'sleep':
       await (db.delete(db.sleepLogs)..where((t) => t.id.equals(id))).go();
-      break;
     case 'weight':
       await (db.delete(db.weightLogs)..where((t) => t.id.equals(id))).go();
-      break;
     case 'learning':
       await (db.delete(db.learningLogs)..where((t) => t.id.equals(id))).go();
-      break;
     case 'martial':
       await (db.delete(db.martialArtsLogs)..where((t) => t.id.equals(id))).go();
-      break;
     case 'hobby':
       await (db.delete(db.hobbyLogs)..where((t) => t.id.equals(id))).go();
-      break;
     case 'nutrition':
+      final row = await (db.select(db.nutritionLogs)..where((t) => t.id.equals(id))).getSingleOrNull();
       await (db.delete(db.nutritionLogs)..where((t) => t.id.equals(id))).go();
-      break;
+      final photo = row?.photoPath;
+      if (photo != null) {
+        try {
+          final file = File(photo);
+          if (await file.exists()) await file.delete();
+        } catch (_) {
+          // Best effort — a leftover file is harmless.
+        }
+      }
   }
+  await QuickLogActions(db).delete(id);
 }

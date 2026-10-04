@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz;
 
 import 'core/app_shell.dart';
+import 'core/providers/core_providers.dart';
 import 'core/theme/app_theme_builder.dart';
 import 'core/theme/palette_scope.dart';
 import 'core/theme/theme_controller.dart';
@@ -21,7 +23,11 @@ void main() async {
     // No .env bundled or unreadable — AI features stay off, everything
     // else in the app works exactly the same.
   }
-  runApp(const ProviderScope(child: TheSystemApp()));
+  final prefs = await SharedPreferences.getInstance();
+  runApp(ProviderScope(
+    overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+    child: const TheSystemApp(),
+  ));
 }
 
 class TheSystemApp extends ConsumerWidget {

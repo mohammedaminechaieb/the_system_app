@@ -61,7 +61,7 @@ class _AnimatedHabitCheckState extends State<AnimatedHabitCheck> with SingleTick
             color: widget.done ? p.primary : Colors.transparent,
             border: Border.all(color: widget.done ? p.primary : p.border, width: 2),
             borderRadius: BorderRadius.circular(widget.size * 0.3),
-            boxShadow: widget.done ? [BoxShadow(color: p.primary.withOpacity(0.35), blurRadius: 8, offset: const Offset(0, 2))] : null,
+            boxShadow: widget.done ? [BoxShadow(color: p.primary.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 2))] : null,
           ),
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 150),

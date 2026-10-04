@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/providers/core_providers.dart';
 import '../../../core/theme/app_palette.dart';
 import '../../../core/widgets/animated_habit_check.dart';
+import '../../../core/widgets/habit_icons.dart';
 import '../../../core/widgets/net_image.dart';
 import '../../../core/widgets/picker_field.dart';
 import '../../../core/widgets/shared_widgets.dart';
@@ -55,7 +56,7 @@ class TodayScreen extends ConsumerWidget {
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
-                        colors: [Colors.black.withOpacity(0.1), Colors.black.withOpacity(0.55)],
+                        colors: [Colors.black.withValues(alpha: 0.1), Colors.black.withValues(alpha: 0.55)],
                       ),
                     ),
                   ),
@@ -67,7 +68,7 @@ class TodayScreen extends ConsumerWidget {
                 padding: const EdgeInsets.only(right: 12, top: 6),
                 child: SeasonBadge(
                   season: season,
-                  onTap: () => ref.read(seasonProvider.notifier).state = season == Season.summer ? Season.winter : Season.summer,
+                  onTap: () => ref.read(seasonProvider.notifier).toggle(),
                 ),
               ),
             ],
@@ -84,6 +85,12 @@ class TodayScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
+                // Adapt the day to the energy picked at check-in.
+                if (stateAsync.valueOrNull?.energyLevel case final level?) ...[
+                  _EnergyAdviceCard(level: level),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+
                 SectionCard(
                   title: "Today's habits",
                   titleIcon: Icons.check_circle_outline,
@@ -92,8 +99,10 @@ class TodayScreen extends ConsumerWidget {
                     orElse: () => const SizedBox.shrink(),
                   ),
                   child: habitsAsync.when(
-                    data: (habits) => Column(
-                      children: [for (final h in habits) _HabitRow(habitId: h.habit.id, label: h.habit.label, done: h.done, streak: h.streakDays, tier: h.habit.tier)],
+                    data: (habits) => habits.isEmpty
+                        ? Text('No active habits — add some in Settings → Habits.', style: TextStyle(color: p.textFaint, fontSize: 12.5))
+                        : Column(
+                      children: [for (final h in habits) _HabitRow(habitId: h.habit.id, label: h.habit.label, icon: h.habit.icon, done: h.done, streak: h.streakDays, tier: h.habit.tier)],
                     ),
                     loading: () => const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())),
                     error: (e, _) => Text('$e'),
@@ -112,7 +121,7 @@ class TodayScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
-                CalloutBox(
+                const CalloutBox(
                   icon: Icons.favorite_border,
                   text: "Rough day? 5 minutes of movement is enough — that still counts. See Reference → Getting Started.",
                 ),
@@ -138,7 +147,7 @@ class SeasonBadge extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), borderRadius: BorderRadius.circular(20)),
+        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(20)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -152,13 +161,30 @@ class SeasonBadge extends StatelessWidget {
   }
 }
 
+class _EnergyAdviceCard extends StatelessWidget {
+  final int level;
+  const _EnergyAdviceCard({required this.level});
+
+  @override
+  Widget build(BuildContext context) {
+    final plan = PlanContent.energyPlans.where((e) => e.level == level).firstOrNull;
+    if (plan == null) return const SizedBox.shrink();
+    return SectionCard(
+      title: 'Energy $level · ${plan.label}',
+      titleIcon: Icons.battery_charging_full_rounded,
+      child: Text(plan.description, style: Theme.of(context).textTheme.bodyMedium),
+    );
+  }
+}
+
 class _HabitRow extends ConsumerWidget {
   final String habitId;
   final String label;
+  final String icon;
   final bool done;
   final int streak;
   final int tier;
-  const _HabitRow({required this.habitId, required this.label, required this.done, required this.streak, this.tier = 1});
+  const _HabitRow({required this.habitId, required this.label, required this.icon, required this.done, required this.streak, this.tier = 1});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -173,6 +199,8 @@ class _HabitRow extends ConsumerWidget {
           children: [
             AnimatedHabitCheck(done: done, onTap: () => ref.read(habitActionsProvider).toggle(habitId, todayKey)),
             const SizedBox(width: 12),
+            Icon(habitIcon(icon), size: 17, color: done ? p.primary : p.textFaint),
+            const SizedBox(width: 8),
             Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyLarge)),
             if (tier > 1) Padding(padding: const EdgeInsets.only(right: 6), child: Icon(Icons.whatshot_rounded, size: 14, color: tier == 3 ? p.danger : p.warning)),
             if (streak > 0) Pill(text: '${streak}d', icon: Icons.local_fire_department_rounded),
@@ -212,9 +240,20 @@ class _QuickLogPickersState extends ConsumerState<_QuickLogPickers> {
     _steps = widget.initialSteps;
   }
 
+  bool _saving = false;
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    await ref.read(dailyStateActionsProvider).setQuickLog(widget.todayKey, sleepHours: _sleep, weightKg: _weight, steps: _steps);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    messenger.showSnackBar(const SnackBar(content: Text("Saved today's numbers"), duration: Duration(seconds: 1)));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final p = AppPalette.of(context);
+    final latestWeight = ref.watch(latestWeightProvider).valueOrNull;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -228,6 +267,7 @@ class _QuickLogPickersState extends ConsumerState<_QuickLogPickers> {
         const SizedBox(height: 10),
         _WeightStepper(
           value: _weight,
+          startFrom: latestWeight ?? 70,
           onChanged: (v) => setState(() => _weight = v),
         ),
         const SizedBox(height: 10),
@@ -243,11 +283,8 @@ class _QuickLogPickersState extends ConsumerState<_QuickLogPickers> {
           width: double.infinity,
           child: ElevatedButton.icon(
             icon: const Icon(Icons.save_outlined, size: 18),
-            onPressed: () {
-              ref.read(dailyStateActionsProvider).setQuickLog(widget.todayKey, sleepHours: _sleep, weightKg: _weight, steps: _steps);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Saved today's numbers"), duration: Duration(seconds: 1)));
-            },
-            label: const Text("Save today's numbers"),
+            onPressed: _saving || (_sleep == null && _weight == null && _steps == null) ? null : _save,
+            label: Text(_saving ? 'Saving…' : "Save today's numbers"),
           ),
         ),
       ],
@@ -257,8 +294,9 @@ class _QuickLogPickersState extends ConsumerState<_QuickLogPickers> {
 
 class _WeightStepper extends StatelessWidget {
   final double? value;
+  final double startFrom; // where the first tap starts when nothing is set yet
   final ValueChanged<double> onChanged;
-  const _WeightStepper({required this.value, required this.onChanged});
+  const _WeightStepper({required this.value, required this.onChanged, this.startFrom = 70});
 
   @override
   Widget build(BuildContext context) {
@@ -281,8 +319,10 @@ class _WeightStepper extends StatelessWidget {
               ],
             ),
           ),
-          _StepBtn(icon: Icons.remove, onTap: () => onChanged(((value ?? 70) - 0.1).clamp(30, 250))),
-          _StepBtn(icon: Icons.add, onTap: () => onChanged(((value ?? 70) + 0.1).clamp(30, 250))),
+          // The first tap only adopts the starting weight; later taps step
+          // by 0.1. Rounding avoids float drift like 70.10000000000001.
+          _StepBtn(icon: Icons.remove, onTap: () => onChanged(value == null ? startFrom : (((value! - 0.1) * 10).round() / 10).clamp(30, 250))),
+          _StepBtn(icon: Icons.add, onTap: () => onChanged(value == null ? startFrom : (((value! + 0.1) * 10).round() / 10).clamp(30, 250))),
         ],
       ),
     );

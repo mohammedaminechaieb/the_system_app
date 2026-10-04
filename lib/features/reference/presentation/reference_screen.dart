@@ -186,10 +186,10 @@ class _GettingStartedTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
-        SectionCard(
+        const SectionCard(
           title: 'Starting a martial art',
           titleIcon: Icons.sports_martial_arts,
-          child: const BulletList(items: [
+          child: BulletList(items: [
             'Pick 2–3 candidates from the grid based on what you\'re optimizing for',
             'Search "[art] intro class near me" — most gyms offer a free/cheap trial',
             'Attend one trial per art over 2–3 weeks — judge the coach and people as much as the art',
@@ -197,10 +197,10 @@ class _GettingStartedTab extends StatelessWidget {
           ]),
         ),
         const SizedBox(height: AppSpacing.lg),
-        SectionCard(
+        const SectionCard(
           title: 'Starting a new hobby',
           titleIcon: Icons.star_outline,
-          child: const BulletList(items: [
+          child: BulletList(items: [
             'Pick exactly one per category — resist starting three at once',
             'Two-minute rule: day one is just opening the material for 2 minutes',
             'Habit-stack it right after an existing habit',
@@ -221,10 +221,10 @@ class _PrioritiesTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 40),
       children: [
-        SectionCard(
+        const SectionCard(
           title: 'What matters most',
           titleIcon: Icons.check_circle_outline,
-          child: Wrap(spacing: 8, runSpacing: 8, children: const [
+          child: Wrap(spacing: 8, runSpacing: 8, children: [
             Pill(text: 'Sleep 7–9h, consistent wake'),
             Pill(text: 'Move almost every day'),
             Pill(text: 'Strength ~3x/week'),

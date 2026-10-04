@@ -52,7 +52,6 @@ class AppTheme {
 
     final displayFont = GoogleFonts.fraunces();
     final bodyFont = GoogleFonts.inter();
-    final monoFont = GoogleFonts.jetBrainsMono();
 
     return base.copyWith(
       textTheme: base.textTheme

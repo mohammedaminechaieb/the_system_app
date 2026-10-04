@@ -19,7 +19,9 @@ class DailyStateActions {
     await db.into(db.dailyState).insertOnConflictUpdate(
           DailyStateCompanion(date: Value(dateKey), energyLevel: Value(level)),
         );
-    await QuickLogActions(db).add(type: QuickLogType.mood, value: level.toDouble(), unit: 'level', dateKey: dateKey);
+    // One energy reading per day — changing it replaces the earlier one
+    // rather than stacking extra mood entries into the correlations.
+    await QuickLogActions(db).replaceForDay(type: QuickLogType.mood, subtype: 'energy', value: level.toDouble(), unit: 'level', mood: level, dateKey: dateKey);
   }
 
   Future<void> setQuickLog(String dateKey, {double? sleepHours, double? weightKg, int? steps}) async {
@@ -32,13 +34,25 @@ class DailyStateActions {
           ),
         );
     if (sleepHours != null) {
-      await QuickLogActions(db).add(type: QuickLogType.sleep, value: sleepHours, unit: 'hours', dateKey: dateKey);
+      await QuickLogActions(db).replaceForDay(type: QuickLogType.sleep, subtype: 'daily', value: sleepHours, unit: 'hours', dateKey: dateKey);
     }
     if (weightKg != null) {
-      await QuickLogActions(db).add(type: QuickLogType.weight, value: weightKg, unit: 'kg', dateKey: dateKey);
+      await QuickLogActions(db).replaceForDay(type: QuickLogType.weight, subtype: 'daily', value: weightKg, unit: 'kg', dateKey: dateKey);
     }
   }
 }
+
+/// Most recent known body weight (weigh-ins or the daily quick log), used to
+/// start weight steppers near the real value instead of a generic 70 kg.
+final latestWeightProvider = StreamProvider<double?>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.quickLogs)
+        ..where((t) => t.type.equals(QuickLogType.weight.key) & t.value.isNotNull())
+        ..orderBy([(t) => OrderingTerm.desc(t.date), (t) => OrderingTerm.desc(t.timestamp)])
+        ..limit(1))
+      .watchSingleOrNull()
+      .map((row) => row?.value);
+});
 
 final dailyStateActionsProvider = Provider<DailyStateActions>((ref) {
   final db = ref.watch(databaseProvider);

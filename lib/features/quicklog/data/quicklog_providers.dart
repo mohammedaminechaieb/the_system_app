@@ -70,11 +70,28 @@ final recentQuickLogsProvider = StreamProvider.family<List<QuickLog>, int>((ref,
       .watch();
 });
 
+/// Categories whose logged value is a duration that earns screen time.
+const _kEarningTypes = {QuickLogType.exercise, QuickLogType.hobby, QuickLogType.learning, QuickLogType.martialArts};
+
+/// Minutes of screen-time credit an entry earned when it was logged — the
+/// same rule is used in reverse when the entry is deleted.
+double _earnedScreenMinutes(String typeKey, double? value) {
+  final type = QuickLogType.values.where((t) => t.key == typeKey).firstOrNull;
+  if (type == null) return 0;
+  if (_kEarningTypes.contains(type)) return (value ?? 0) > 0 ? value! : 0;
+  if (type == QuickLogType.habit) return StreakRules.habitTickScreenMinutes;
+  return 0;
+}
+
 class QuickLogActions {
   final AppDatabase db;
   QuickLogActions(this.db);
 
-  Future<void> add({
+  /// Inserts one log row and returns its id. Pass [id] to reuse the id of
+  /// the domain row being mirrored, so deleting that row can delete this
+  /// one too (see track_providers.deleteLogRow).
+  Future<String> add({
+    String? id,
     required QuickLogType type,
     String? subtype,
     double? value,
@@ -83,9 +100,10 @@ class QuickLogActions {
     String? note,
     required String dateKey,
   }) async {
+    final rowId = id ?? _uuid.v4();
     await db.into(db.quickLogs).insert(
           QuickLogsCompanion(
-            id: Value(_uuid.v4()),
+            id: Value(rowId),
             type: Value(type.key),
             subtype: Value(subtype),
             value: Value(value),
@@ -100,15 +118,36 @@ class QuickLogActions {
     // than replacing it (see StreakEngine.earnScreenTimeMinutes). Only
     // duration-bearing activity categories and habit ticks earn minutes —
     // logging mood/weight/a meal doesn't unlock screen time.
-    const earningTypes = {QuickLogType.exercise, QuickLogType.hobby, QuickLogType.learning, QuickLogType.martialArts};
-    if (earningTypes.contains(type) && (value ?? 0) > 0) {
-      await StreakEngine(db).earnScreenTimeMinutes(dateKey, value!);
-    } else if (type == QuickLogType.habit) {
-      await StreakEngine(db).earnScreenTimeMinutes(dateKey, 10); // flat 10 "minutes" for a habit tick
-    }
+    final earned = _earnedScreenMinutes(type.key, value);
+    if (earned > 0) await StreakEngine(db).earnScreenTimeMinutes(dateKey, earned);
+    return rowId;
   }
 
-  Future<void> delete(String id) => (db.delete(db.quickLogs)..where((t) => t.id.equals(id))).go();
+  /// For once-a-day values (today's energy, today's sleep/weight numbers):
+  /// replaces any earlier entry with the same type+subtype on that day
+  /// instead of stacking duplicates every time the value is changed.
+  Future<void> replaceForDay({required QuickLogType type, required String subtype, double? value, String? unit, int? mood, required String dateKey}) async {
+    await (db.delete(db.quickLogs)..where((t) => t.type.equals(type.key) & t.subtype.equals(subtype) & t.date.equals(dateKey))).go();
+    await add(type: type, subtype: subtype, value: value, unit: unit, mood: mood, dateKey: dateKey);
+  }
+
+  /// Deletes a log and reverses any screen-time credit it earned.
+  Future<void> delete(String id) async {
+    final row = await (db.select(db.quickLogs)..where((t) => t.id.equals(id))).getSingleOrNull();
+    if (row == null) return;
+    await (db.delete(db.quickLogs)..where((t) => t.id.equals(id))).go();
+    final earned = _earnedScreenMinutes(row.type, row.value);
+    if (earned > 0) await StreakEngine(db).earnScreenTimeMinutes(row.date, -earned);
+  }
+
+  /// Removes the log written when [habitId] was ticked on [dateKey] — used
+  /// when the tick is undone.
+  Future<void> deleteHabitTick(String habitId, String dateKey) async {
+    final rows = await (db.select(db.quickLogs)..where((t) => t.type.equals(QuickLogType.habit.key) & t.subtype.equals(habitId) & t.date.equals(dateKey))).get();
+    for (final r in rows) {
+      await delete(r.id);
+    }
+  }
 
   /// Looks at the last 14 days of entries and returns the most frequently
   /// logged type, so the quick-capture sheet can default to it instead of
@@ -116,7 +155,9 @@ class QuickLogActions {
   /// [QuickLogType.exercise] when there's no history yet.
   Future<QuickLogType> suggestLikelyType() async {
     final cutoff = DateTime.now().subtract(const Duration(days: 14)).toIso8601String().substring(0, 10);
-    final rows = await (db.select(db.quickLogs)..where((t) => t.date.isBiggerOrEqualValue(cutoff))).get();
+    // Habit ticks are logged automatically from the habit list (and aren't
+    // offered in quick capture), so they'd drown out the real signal.
+    final rows = await (db.select(db.quickLogs)..where((t) => t.date.isBiggerOrEqualValue(cutoff) & t.type.equals(QuickLogType.habit.key).not())).get();
     if (rows.isEmpty) return QuickLogType.exercise;
 
     final counts = <String, int>{};

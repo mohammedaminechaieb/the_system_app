@@ -330,3 +330,24 @@ class StatBox extends StatelessWidget {
     );
   }
 }
+
+/// Asks before deleting a logged entry — the delete icon sits right next
+/// to the entry text, so a stray tap shouldn't silently destroy history.
+Future<bool> confirmDelete(BuildContext context, {String what = 'this entry'}) async {
+  final p = AppPalette.of(context);
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('Delete $what?'),
+      content: const Text("This can't be undone."),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: Text('Delete', style: TextStyle(color: p.danger, fontWeight: FontWeight.w700)),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
+}

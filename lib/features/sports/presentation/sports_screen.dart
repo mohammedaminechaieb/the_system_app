@@ -37,9 +37,9 @@ class SportsScreen extends ConsumerWidget {
 
                 Text('Home strength — no equipment', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 10),
-                HorizontalCardScroll(
+                const HorizontalCardScroll(
                   height: 150,
-                  children: const [
+                  children: [
                     _ExerciseCard(name: 'Legs', prog: 'Squat → split squat → Bulgarian split squat', img: 'https://images.unsplash.com/photo-1434608519344-49d77a699e1d?w=500&q=80'),
                     _ExerciseCard(name: 'Chest', prog: 'Knee push-up → push-up → decline', img: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=500&q=80'),
                     _ExerciseCard(name: 'Back', prog: 'Towel rows → doorframe → inverted rows', img: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&q=80'),
@@ -47,10 +47,10 @@ class SportsScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                SectionCard(
+                const SectionCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Text('3 sets of 8–15 reps, 60–90s rest. Increase difficulty once all sets hit the top of the range with good form.', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                       SizedBox(height: 10),
                       Wrap(spacing: 8, runSpacing: 8, children: [
@@ -110,10 +110,10 @@ class SportsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: AppSpacing.lg),
 
-                SectionCard(
+                const SectionCard(
                   title: 'Should I train today?',
                   titleIcon: Icons.help_outline,
-                  child: const BulletList(items: [
+                  child: BulletList(items: [
                     'Injured or sharp pain? → No, rest.',
                     'Sick with fever? → No, rest until recovered.',
                     '2+ weeks declining performance? → Deload, reduce volume ~40–50%.',

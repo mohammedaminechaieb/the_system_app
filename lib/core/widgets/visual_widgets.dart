@@ -177,7 +177,7 @@ class HeroHeader extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.black.withOpacity(0.0), Colors.black.withOpacity(0.65)],
+                colors: [Colors.black.withValues(alpha: 0.0), Colors.black.withValues(alpha: 0.65)],
               ),
             ),
           ),
@@ -191,7 +191,7 @@ class HeroHeader extends StatelessWidget {
                 Text(title, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700)),
                 if (subtitle != null) ...[
                   const SizedBox(height: 4),
-                  Text(subtitle!, style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 13)),
+                  Text(subtitle!, style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 13)),
                 ],
               ],
             ),

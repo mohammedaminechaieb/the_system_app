@@ -119,7 +119,7 @@ class _WelcomePage extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: p.textSecondary),
           ),
           const SizedBox(height: 18),
-          Wrap(spacing: 8, runSpacing: 8, children: const [
+          const Wrap(spacing: 8, runSpacing: 8, children: [
             Pill(text: 'Habits', icon: Icons.check_circle_outline),
             Pill(text: 'Training', icon: Icons.fitness_center),
             Pill(text: 'Nutrition', icon: Icons.restaurant_outlined),
@@ -227,9 +227,9 @@ class _SeasonPickPage extends ConsumerWidget {
           const SizedBox(height: 22),
           Row(
             children: [
-              Expanded(child: _SeasonCard(label: 'Summer', icon: Icons.wb_sunny_rounded, selected: season == Season.summer, onTap: () => ref.read(seasonProvider.notifier).state = Season.summer)),
+              Expanded(child: _SeasonCard(label: 'Summer', icon: Icons.wb_sunny_rounded, selected: season == Season.summer, onTap: () => ref.read(seasonProvider.notifier).set(Season.summer))),
               const SizedBox(width: 12),
-              Expanded(child: _SeasonCard(label: 'Winter', icon: Icons.ac_unit_rounded, selected: season == Season.winter, onTap: () => ref.read(seasonProvider.notifier).state = Season.winter)),
+              Expanded(child: _SeasonCard(label: 'Winter', icon: Icons.ac_unit_rounded, selected: season == Season.winter, onTap: () => ref.read(seasonProvider.notifier).set(Season.winter))),
             ],
           ),
         ],

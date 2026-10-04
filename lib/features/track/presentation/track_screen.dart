@@ -9,6 +9,7 @@ import '../../../core/theme/app_palette.dart';
 import '../../../core/widgets/entry_toast.dart';
 import '../../../core/widgets/picker_field.dart';
 import '../../../core/widgets/shared_widgets.dart';
+import '../../today/data/today_providers.dart';
 import '../data/track_providers.dart';
 import 'meal_photo_sheet.dart';
 
@@ -96,7 +97,13 @@ class _EntryTile extends StatelessWidget {
       ),
       title: Text(title, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
       subtitle: Text(subtitle, style: TextStyle(fontSize: 12, color: p.textFaint)),
-      trailing: IconButton(icon: Icon(Icons.close, size: 18, color: p.danger), onPressed: onDelete),
+      trailing: IconButton(
+        icon: Icon(Icons.close, size: 18, color: p.danger),
+        tooltip: 'Delete',
+        onPressed: () async {
+          if (await confirmDelete(context)) onDelete();
+        },
+      ),
     );
   }
 }
@@ -183,7 +190,7 @@ class _ExerciseTabState extends ConsumerState<_ExerciseTab> {
           title: 'History',
           titleIcon: Icons.history,
           child: logs.isEmpty
-              ? _EmptyState(icon: Icons.fitness_center, text: 'No workouts logged yet.\nAdd your first session above.')
+              ? const _EmptyState(icon: Icons.fitness_center, text: 'No workouts logged yet.\nAdd your first session above.')
               : Column(children: [for (final l in logs) _EntryTile(icon: Icons.fitness_center, title: '${l.date} — ${l.type}${l.muscleGroup != null ? ' (${l.muscleGroup})' : ''}', subtitle: '${l.durationMin ?? '—'} min · energy ${l.energyRating ?? '—'}', onDelete: () => deleteLogRow(db, 'exercise', l.id))]),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -276,7 +283,7 @@ class _SleepTabState extends ConsumerState<_SleepTab> {
           title: 'History',
           titleIcon: Icons.history,
           child: logs.isEmpty
-              ? _EmptyState(icon: Icons.bedtime_outlined, text: 'No sleep logged yet.\nTrack a night to see your trend.')
+              ? const _EmptyState(icon: Icons.bedtime_outlined, text: 'No sleep logged yet.\nTrack a night to see your trend.')
               : Column(children: [for (final l in logs) _EntryTile(icon: Icons.bedtime, title: '${l.date} — ${l.hours ?? '—'}h', subtitle: '${l.bedtime ?? '—'} → ${l.wakeTime ?? '—'} · quality ${l.quality ?? '—'}', onDelete: () => deleteLogRow(db, 'sleep', l.id))]),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -294,7 +301,7 @@ class _WeightTab extends ConsumerStatefulWidget {
 }
 
 class _WeightTabState extends ConsumerState<_WeightTab> {
-  double _weight = 70.0;
+  double? _picked;
 
   @override
   Widget build(BuildContext context) {
@@ -302,6 +309,9 @@ class _WeightTabState extends ConsumerState<_WeightTab> {
     final logsAsync = ref.watch(weightLogsProvider);
     final db = ref.watch(databaseProvider);
     final todayKey = ref.watch(todayKeyProvider);
+    // Start from the last known weight rather than a generic 70 kg.
+    final weight = (_picked ?? ref.watch(latestWeightProvider).valueOrNull ?? 70.0).clamp(35.0, 160.0);
+    void setWeight(double v) => setState(() => _picked = (v * 10).round() / 10);
 
     return _LogListShell(
       form: Column(
@@ -313,33 +323,42 @@ class _WeightTabState extends ConsumerState<_WeightTab> {
           Center(
             child: Column(
               children: [
-                Text(_weight.toStringAsFixed(1), style: TextStyle(fontFamily: p.monoFontFamily, fontSize: 42, fontWeight: FontWeight.w700, color: p.primary)),
+                Text(weight.toStringAsFixed(1), style: TextStyle(fontFamily: p.monoFontFamily, fontSize: 42, fontWeight: FontWeight.w700, color: p.primary)),
                 Text('kg', style: TextStyle(fontSize: 12, color: p.textFaint)),
               ],
             ),
           ),
           const SizedBox(height: 8),
           Slider(
-            value: _weight,
+            value: weight,
             min: 35,
             max: 160,
             divisions: 1250,
-            label: _weight.toStringAsFixed(1),
-            onChanged: (v) => setState(() => _weight = v),
+            label: weight.toStringAsFixed(1),
+            onChanged: setWeight,
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              OutlinedButton(onPressed: () => setState(() => _weight = (_weight - 0.5).clamp(35, 160)), child: const Text('-0.5')),
-              const SizedBox(width: 10),
-              OutlinedButton(onPressed: () => setState(() => _weight = (_weight + 0.5).clamp(35, 160)), child: const Text('+0.5')),
+              OutlinedButton(onPressed: () => setWeight((weight - 0.1).clamp(35, 160)), child: const Text('-0.1')),
+              const SizedBox(width: 8),
+              OutlinedButton(onPressed: () => setWeight((weight - 0.5).clamp(35, 160)), child: const Text('-0.5')),
+              const SizedBox(width: 8),
+              OutlinedButton(onPressed: () => setWeight((weight + 0.5).clamp(35, 160)), child: const Text('+0.5')),
+              const SizedBox(width: 8),
+              OutlinedButton(onPressed: () => setWeight((weight + 0.1).clamp(35, 160)), child: const Text('+0.1')),
             ],
           ),
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: () => addWeightLog(db, date: todayKey, weightKg: _weight).then((_) => showEntryAddedToast(context, message: 'Weight logged', icon: Icons.monitor_weight)),
+              onPressed: () async {
+                await addWeightLog(db, date: todayKey, weightKg: weight);
+                if (!context.mounted) return;
+                showEntryAddedToast(context, message: 'Weight logged', icon: Icons.monitor_weight);
+                setState(() => _picked = null);
+              },
               child: const Text('Add entry'),
             ),
           ),
@@ -352,7 +371,7 @@ class _WeightTabState extends ConsumerState<_WeightTab> {
             title: 'History',
             titleIcon: Icons.history,
             child: logs.isEmpty
-                ? _EmptyState(icon: Icons.monitor_weight_outlined, text: 'No weigh-ins yet.\nWeekly check-ins build the trend line.')
+                ? const _EmptyState(icon: Icons.monitor_weight_outlined, text: 'No weigh-ins yet.\nWeekly check-ins build the trend line.')
                 : Column(children: [
                     for (final l in logs)
                       _EntryTile(
@@ -370,7 +389,7 @@ class _WeightTabState extends ConsumerState<_WeightTab> {
     );
   }
 
-  String _trendFor(List logsSorted, dynamic entry) {
+  String _trendFor(List<WeightLog> logsSorted, WeightLog entry) {
     final idx = logsSorted.indexWhere((e) => e.id == entry.id);
     if (idx <= 0) return 'first entry';
     final diff = entry.weightKg - logsSorted[idx - 1].weightKg;
@@ -445,7 +464,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
           title: 'History',
           titleIcon: Icons.history,
           child: logs.isEmpty
-              ? _EmptyState(icon: Icons.menu_book_outlined, text: 'No learning logged yet.\nEven 10 minutes counts.')
+              ? const _EmptyState(icon: Icons.menu_book_outlined, text: 'No learning logged yet.\nEven 10 minutes counts.')
               : Column(children: [for (final l in logs) _EntryTile(icon: Icons.menu_book, title: '${l.date} — ${l.subject}', subtitle: '${l.durationMin ?? '—'} min · focus ${l.focusRating ?? '—'}', onDelete: () => deleteLogRow(db, 'learning', l.id))]),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -505,7 +524,7 @@ class _MartialTabState extends ConsumerState<_MartialTab> {
           title: 'History',
           titleIcon: Icons.history,
           child: logs.isEmpty
-              ? _EmptyState(icon: Icons.sports_martial_arts, text: 'No sessions logged yet.\nLog your first class or drill.')
+              ? const _EmptyState(icon: Icons.sports_martial_arts, text: 'No sessions logged yet.\nLog your first class or drill.')
               : Column(children: [for (final l in logs) _EntryTile(icon: Icons.sports_martial_arts, title: '${l.date} — ${l.focus ?? 'Session'}', subtitle: l.rank ?? l.note ?? '', onDelete: () => deleteLogRow(db, 'martial', l.id))]),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -599,7 +618,7 @@ class _HobbyTabState extends ConsumerState<_HobbyTab> {
           title: 'History',
           titleIcon: Icons.history,
           child: logs.isEmpty
-              ? _EmptyState(icon: Icons.star_outline, text: 'No hobby time logged yet.\nPick a category above to start.')
+              ? const _EmptyState(icon: Icons.star_outline, text: 'No hobby time logged yet.\nPick a category above to start.')
               : Column(children: [for (final l in logs) _EntryTile(icon: Icons.star, title: '${l.date} — ${l.hobby}', subtitle: '${l.category} · ${l.durationMin ?? '—'} min', onDelete: () => deleteLogRow(db, 'hobby', l.id))]),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -696,7 +715,7 @@ class _NutritionTabState extends ConsumerState<_NutritionTab> {
           title: 'History',
           titleIcon: Icons.history,
           child: logs.isEmpty
-              ? _EmptyState(icon: Icons.restaurant_outlined, text: 'No meals logged yet.\nLog honestly — no perfect streak needed.')
+              ? const _EmptyState(icon: Icons.restaurant_outlined, text: 'No meals logged yet.\nLog honestly — no perfect streak needed.')
               : Column(children: [
                   for (final l in logs)
                     _NutritionEntryTile(log: l, onDelete: () => deleteLogRow(db, 'nutrition', l.id)),
@@ -726,22 +745,38 @@ class _NutritionEntryTile extends StatelessWidget {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: log.photoPath != null
-          ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(log.photoPath!), width: 38, height: 38, fit: BoxFit.cover))
-          : Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(color: p.primarySoft, borderRadius: BorderRadius.circular(10)),
-              child: Icon(Icons.restaurant, size: 18, color: p.primary),
-            ),
+          ? ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(
+                File(log.photoPath!),
+                width: 38,
+                height: 38,
+                fit: BoxFit.cover,
+                cacheWidth: 120,
+                // The photo file may have been cleared from storage.
+                errorBuilder: (_, __, ___) => _mealIcon(p),
+              ))
+          : _mealIcon(p),
       title: Text('${log.date} — ${log.meal}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
       subtitle: Text(
         [log.description, if (!log.onPlan) "off-plan, that's fine", if (macroBits.isNotEmpty) macroBits.join(' · ')].join(' · '),
         style: TextStyle(fontSize: 12, color: p.textFaint),
       ),
-      trailing: IconButton(icon: Icon(Icons.close, size: 18, color: p.danger), onPressed: onDelete),
+      trailing: IconButton(
+        icon: Icon(Icons.close, size: 18, color: p.danger),
+        tooltip: 'Delete',
+        onPressed: () async {
+          if (await confirmDelete(context, what: 'this meal')) onDelete();
+        },
+      ),
     );
   }
 }
+
+Widget _mealIcon(AppPalette p) => Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(color: p.primarySoft, borderRadius: BorderRadius.circular(10)),
+      child: Icon(Icons.restaurant, size: 18, color: p.primary),
+    );
 
 class _DisplayField extends StatelessWidget {
   final String label;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +17,7 @@ import '../features/sports/presentation/sports_screen.dart';
 import '../features/today/presentation/today_screen.dart';
 import '../features/track/presentation/track_screen.dart';
 import '../features/weekly_review/presentation/weekly_review_screen.dart';
+import 'providers/core_providers.dart';
 import 'providers/streak_engine.dart';
 import 'theme/app_palette.dart';
 import 'widgets/shared_widgets.dart';
@@ -31,14 +34,59 @@ class AppShell extends ConsumerStatefulWidget {
   ConsumerState<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends ConsumerState<AppShell> {
-  bool _unlockedForSession = false;
+class _AppShellState extends ConsumerState<AppShell> with WidgetsBindingObserver {
+  /// The day the gate was passed/skipped for. A new calendar day brings the
+  /// morning check-in back, even if the app was never closed.
+  String? _unlockedForDay;
   bool _onboardingJustFinished = false;
+  Timer? _midnightTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _scheduleMidnightTick();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _midnightTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshToday();
+      _scheduleMidnightTick(); // timers can drift while the app is suspended
+    }
+  }
+
+  /// Bumps [todayTickerProvider] if the date changed. Everything keyed on
+  /// today (habits, gate, streak reconciliation) re-evaluates from that.
+  void _refreshToday() {
+    final now = DateTime.now();
+    if (dateKeyOf(now) != dateKeyOf(ref.read(todayTickerProvider))) {
+      ref.read(todayTickerProvider.notifier).state = now;
+    }
+  }
+
+  void _scheduleMidnightTick() {
+    _midnightTimer?.cancel();
+    final now = DateTime.now();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    _midnightTimer = Timer(nextMidnight.difference(now) + const Duration(seconds: 1), () {
+      _refreshToday();
+      _scheduleMidnightTick();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final launchEval = ref.watch(appLaunchEvaluatorProvider);
     final onboardingSeenAsync = ref.watch(onboardingSeenProvider);
+    final todayKey = ref.watch(todayKeyProvider);
     final p = AppPalette.of(context);
 
     return launchEval.when(
@@ -48,17 +96,48 @@ class _AppShellState extends ConsumerState<AppShell> {
             if (!seen && !_onboardingJustFinished) {
               return OnboardingFlow(onFinished: () => setState(() => _onboardingJustFinished = true));
             }
-            if (!_unlockedForSession) {
-              return GateScreen(onUnlocked: () => setState(() => _unlockedForSession = true));
+            if (_unlockedForDay != todayKey) {
+              return GateScreen(onUnlocked: () => setState(() => _unlockedForDay = todayKey));
             }
             return const _MainNavigation();
           },
           loading: () => Scaffold(backgroundColor: p.bg, body: Center(child: CircularProgressIndicator(color: p.primary))),
-          error: (e, _) => Scaffold(body: Center(child: Text('Startup error: $e'))),
+          error: (e, _) => _StartupError(error: e, onRetry: () => ref.invalidate(onboardingSeenProvider)),
         );
       },
       loading: () => Scaffold(backgroundColor: p.bg, body: Center(child: CircularProgressIndicator(color: p.primary))),
-      error: (e, _) => Scaffold(body: Center(child: Text('Startup error: $e'))),
+      error: (e, _) => _StartupError(error: e, onRetry: () => ref.invalidate(appLaunchEvaluatorProvider)),
+    );
+  }
+}
+
+class _StartupError extends StatelessWidget {
+  final Object error;
+  final VoidCallback onRetry;
+  const _StartupError({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppPalette.of(context);
+    return Scaffold(
+      backgroundColor: p.bg,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 36, color: p.danger),
+              const SizedBox(height: 12),
+              Text('Something went wrong while starting up.', style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
+              const SizedBox(height: 8),
+              Text('$error', style: TextStyle(fontSize: 12, color: p.textFaint), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton(onPressed: onRetry, child: const Text('Try again')),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

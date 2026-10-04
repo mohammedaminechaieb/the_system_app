@@ -17,7 +17,7 @@ class AtomicHabitsListScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final progressAsync = ref.watch(readingProgressProvider);
-    final chapters = AtomicHabitsContent.chapters;
+    const chapters = AtomicHabitsContent.chapters;
     final p = AppPalette.of(context);
 
     return Scaffold(
